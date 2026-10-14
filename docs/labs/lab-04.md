@@ -103,6 +103,9 @@ devdigest-mcp.
 змінює, хто їх викликає далі по коду і які ендпоінти та cron-задачі за ними
 стоять. Той самий результат віддає MCP-інструмент `get_blast_radius`.
 
+**Відео (52 с):** [hw4-blast-radius.mp4](https://github.com/AgentIvan/dev-digest/blob/pr-assets/hw-4/hw4-blast-radius.mp4)
+— дерево й граф на PR #5, вісім ендпоінтів за одним обробником на demo-PR #3.
+
 ![Blast radius PR #5](https://raw.githubusercontent.com/AgentIvan/dev-digest/pr-assets/hw-4/blast-tree.png)
 
 Дві провокації з лаби виконано буквально:
