@@ -62,6 +62,22 @@ sections in the skill. `normalizeRule` (one line, no leading Markdown, ≤ 300 c
 the model's rule and on the maintainer's edit before anything reaches the skill.
 Evidence: `src/modules/conventions/helpers.ts:34`, `src/modules/conventions/service.ts:162`
 
+### 2026-10-08 — The intent is shared pre-work, billed to the PR, not to a run
+`run-executor` derives (or reuses) the PR intent once per execution, before the
+agents, and passes it to each. Its cost sits on `pr_intent.cost_usd`, not in a
+run's `cost_usd`, because one derivation serves every agent and later runs on
+the same head. Tests that count model calls per run must skip `schemaName ===
+'PrIntent'`.
+Evidence: `src/modules/reviews/run-executor.ts:113`, `src/modules/reviews/intent.ts:138`
+
+### 2026-10-22 — An unreadable link is context the intent lacks, not a link to drop
+A description that says "Closes #12" makes #12 part of the PR's purpose. When the issue
+404s or a linked plan is not in the clone, dropping the link silently lets the model fill
+the hole from the title. `gatherLinked` turns every unreadable link into a gap, the prompt
+lists the gaps under Unavailable context, and the record keeps them in `missing_context`
+so the card and the reviewers see what the intent was derived without.
+Evidence: `src/modules/reviews/intent-context.ts:127`, `src/modules/reviews/intent.ts:93`
+
 ## Tool & Library Notes
 
 ### 2026-10-07 — OpenRouter usage counters lag behind the generation
@@ -158,6 +174,15 @@ Evidence: `src/modules/conventions/service.ts:162`, `src/app.ts:162`
 at the repository root were offered to the conventions model (and to the onboarding
 facts). The path is now prefixed with '/' before matching.
 Evidence: `src/modules/repo-intel/service.ts:749`
+
+### 2026-10-08 — Integration tests could call real APIs with real keys
+`config.ts` does `import 'dotenv/config'`, so under vitest `process.env` held the
+keys from `server/.env`, and the default secrets store was the developer's
+`~/.devdigest/secrets.json`. A test that mocked only `anthropic` sent the intent
+call to the real OpenRouter (it showed as a 10 s timeout). In `NODE_ENV=test`
+the store is now a temp file and the container ignores env keys — mock every
+provider a test needs.
+Evidence: `src/platform/container.ts:90`, `src/platform/config.ts:76`
 
 ## Session Notes
 

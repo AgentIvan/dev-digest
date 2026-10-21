@@ -52,6 +52,16 @@ export const prIntent = pgTable('pr_intent', {
   intent: text('intent').notNull(),
   inScope: jsonb('in_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   outOfScope: jsonb('out_of_scope').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  /** Inputs the intent rests on (title, description, linked issues/plans, files, hunk headers). */
+  sources: jsonb('sources').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  /** Linked context the derivation could not read. */
+  missingContext: jsonb('missing_context').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  /** Head commit the intent was derived for; a newer head means derive again. */
+  headSha: text('head_sha'),
+  model: text('model'),
+  /** USD the derivation cost; null when the provider reported none. */
+  costUsd: doublePrecision('cost_usd'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
 
 export const prBrief = pgTable('pr_brief', {
