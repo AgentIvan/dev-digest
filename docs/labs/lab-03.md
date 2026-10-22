@@ -146,7 +146,7 @@ then what wires it in, then its tests and docs, and everything mechanical at the
 GitHub sorts alphabetically, so on PR #9 the subagent markdown files come first and
 `intent.ts` is lost somewhere in the middle.
 
-**Video (62 s):** [hw3-smart-diff.mp4](https://github.com/AgentIvan/dev-digest/blob/pr-assets/hw-3/hw3-smart-diff.mp4)
+**Video (78 s):** [hw3-smart-diff.mp4](https://github.com/AgentIvan/dev-digest/blob/pr-assets/hw-3/hw3-smart-diff.mp4)
 
 ![Smart order on PR #9](https://raw.githubusercontent.com/AgentIvan/dev-digest/pr-assets/hw-3/smart-pr9-top.png)
 
