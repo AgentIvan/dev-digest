@@ -97,6 +97,42 @@ devdigest-mcp.
   exist, and the grounding gate dropped it. The summary still describes the SSRF, so
   the tools return the summary too, and the agent can see it.
 
+## Homework: Blast Radius
+
+The Overview tab on the PR page shows what a PR can break: which symbols it changes,
+who calls them further down the code, and which endpoints and cron jobs sit behind
+them. The MCP tool `get_blast_radius` returns the same result.
+
+**Video (51 s):** [hw4-blast-radius.mp4](https://github.com/AgentIvan/dev-digest/blob/pr-assets/hw-4/hw4-blast-radius.mp4):
+the tree and the graph on PR #5, eight endpoints behind one handler on demo PR #3.
+
+![Blast radius PR #5](https://raw.githubusercontent.com/AgentIvan/dev-digest/pr-assets/hw-4/blast-tree.png)
+
+The two challenges from the lab are met literally:
+
+- **No AI here.** The answer is put together from the ready `repo-intel` index:
+  symbols, references, file ranks, facts about endpoints. If there is no index yet, the
+  server says not indexed right away instead of starting to scan the clone.
+- **Zero analysis at review time.** 30 requests on PR #3 and #5: p95 7-8 ms on the
+  server, up to 25 ms over HTTP, against a 200 ms budget. Every response carries its
+  own `duration_ms`, and a test checks that the model was never called.
+
+The hardest part was figuring out **which symbols are actually changed.** The index
+describes `main`, while the line numbers in the diff belong to the new version. So a
+hunk is mapped onto the base lines: a deleted line is its old number, an inserted one
+is the line it was inserted after. A symbol counts as touched if such a line falls
+into its range. For PR #5, with 52 changed files, that gives 6 symbols instead of
+everything that lives in those files. New files from the PR do not exist in the base
+yet, so they have no callers, and that is correct.
+
+![Graph for one symbol](https://raw.githubusercontent.com/AgentIvan/dev-digest/pr-assets/hw-4/blast-graph.png)
+
+Demo PR #3 shows a limitation: `reviewsRoutes` has 0 callers, because modules are
+registered through a default import under a short name, and the indexer does not
+resolve such a call. The file's endpoints are still visible.
+
+![Blast radius PR #3](https://raw.githubusercontent.com/AgentIvan/dev-digest/pr-assets/hw-4/blast-pr3.png)
+
 ## How to check it yourself
 
 1. `./scripts/dev.sh`, with `node` on PATH (`export PATH="$HOME/.local/node/bin:$PATH"`).
@@ -105,5 +141,6 @@ devdigest-mcp.
 4. Ask: review PR #3 in AgentIvan/dev-digest with the security-reviewer agent, are
    there any critical findings.
 5. Inspector on its own: `cd mcp && npm run inspect`.
+6. Any PR -> Overview -> Blast radius; or `get_blast_radius` in Claude Code.
 
 Tests: `cd mcp && npm test`, `cd server && pnpm exec vitest run .it.test`.
