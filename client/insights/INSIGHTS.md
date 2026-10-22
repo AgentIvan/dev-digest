@@ -42,6 +42,20 @@ tests stay green. `i18n-keys.test.ts` scans every literal `t("…")` against
 built with template literals are not covered.
 Evidence: `src/lib/i18n-keys.test.ts:1`
 
+### 2026-10-08 — A query nested under `["reviews", prId]` refreshes with the reviews
+`useSmartDiff` is keyed `["reviews", prId, "smart-diff"]`, so every existing
+`invalidateQueries(["reviews", prId])` (run finished, finding accepted or
+rejected) refreshes the finding markers with no new wiring. The flip side: code
+that reads all `["reviews", …]` queries at once would now also get a SmartDiff.
+Evidence: `src/lib/hooks/smart-diff.ts:11`, `src/lib/hooks/reviews.ts:68`
+
+### 2026-10-22 — The diff viewer renders page cards through a render prop
+`components/diff-viewer` sits below the PR page and must not import its `FindingCard`
+or hooks. DiffTab owns the findings (`usePrReviews`) and the action (`useFindingAction`)
+and passes a `DiffFindingApi` (`visible`, `render(finding)`); the viewer only decides
+where a card goes: under the anchored line or in the off-patch list at the file end.
+Evidence: `src/components/diff-viewer/helpers.ts:55`, `src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/DiffTab.tsx:58`
+
 ## Tool & Library Notes
 
 ### 2026-10-07 — `messages/en/runs.json` is not uniformly indented
@@ -81,6 +95,13 @@ Evidence: `tsconfig.json:33`
 Components may use `await file.text()` (all current browsers have it), but in
 tests define it on the test file: `Object.defineProperty(file, "text", …)`.
 Evidence: `src/app/skills/_components/ImportSkillDrawer/ImportSkillDrawer.test.tsx:103`
+
+### 2026-10-08 — `FileCard` reads `defaultOpen` once, on mount
+The fold rules (boilerplate folded, files with findings open) apply only when a
+card mounts. Switching Smart/Original order remounts the cards because they move
+under different parents, which re-applies them; a new annotation inside the same
+order does not refold a card the user already opened — intended.
+Evidence: `src/components/diff-viewer/FileCard/FileCard.tsx:45`
 
 ## Recurring Errors & Fixes
 

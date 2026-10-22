@@ -1,13 +1,15 @@
 /* FileCard — one collapsible file in the diff: header (path, +/- stat, comment
-   count) and, when open, its parsed lines plus any outdated comments. */
+   count, Smart Diff finding dot and role note) and, when open, its parsed lines,
+   the findings on lines the patch does not show, and any outdated comments. */
 "use client";
 
 import React from "react";
 import { useTranslations } from "next-intl";
-import { Icon } from "@devdigest/ui";
+import { Icon, SEV } from "@devdigest/ui";
+import type { Severity } from "@devdigest/shared";
 import type { PrFile } from "@/lib/types";
 import { AUTO_EXPAND_MAX_LINES } from "../constants";
-import { parsePatch, type Line } from "../helpers";
+import { anchorFindings, bySeverity, markFor, parsePatch, type DiffFindingApi, type FileAnnotation, type Line } from "../helpers";
 import {
   buildThreads,
   keysForLine,
@@ -15,9 +17,10 @@ import {
   type CommentThread,
   type DiffCommentApi,
 } from "../comments";
-import { s, chevronFor } from "../styles";
+import { s, chevronFor, findingDotFor } from "../styles";
 import { CodeLine } from "../CodeLine";
 import { OutdatedComments } from "../OutdatedComments";
+import { OutsideFindings } from "../OutsideFindings";
 
 /** Threads anchored to a given parsed line (RIGHT=new, LEFT=old). */
 function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): CommentThread[] {
@@ -30,12 +33,25 @@ function threadsForLine(ln: Line, matched: Map<string, CommentThread[]>): Commen
   return out;
 }
 
-export function FileCard({ file, commenting }: { file: PrFile; commenting?: DiffCommentApi }) {
+export function FileCard({
+  file,
+  commenting,
+  annotation,
+  findingApi,
+}: {
+  file: PrFile;
+  commenting?: DiffCommentApi;
+  annotation?: FileAnnotation;
+  findingApi?: DiffFindingApi;
+}) {
   const t = useTranslations("shell");
   const [open, setOpen] = React.useState(
-    (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
+    annotation?.defaultOpen ?? (file.additions ?? 0) + (file.deletions ?? 0) <= AUTO_EXPAND_MAX_LINES
   );
   const lines = React.useMemo(() => parsePatch(file.patch), [file.patch]);
+  const findings = annotation?.findings ?? [];
+  const anchors = React.useMemo(() => anchorFindings(lines, findings), [lines, findings]);
+  const worst = findings.length > 0 ? [...findings].sort(bySeverity)[0]!.severity : null;
 
   // Group this file's comments into threads, then split into ones we can anchor
   // to a rendered line vs. "outdated" (GitHub dropped the line / it's not here).
@@ -60,6 +76,8 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
         <span className="mono" style={s.filePath}>
           {file.path}
         </span>
+        {worst && <FindingDot severity={worst} label={t("diffViewer.findings", { count: findings.length })} />}
+        {annotation?.note && <span style={s.fileNote}>{annotation.note}</span>}
         <span className="mono tnum" style={s.fileStat}>
           <span style={s.addText}>+{file.additions}</span>{" "}
           <span style={s.delText}>−{file.deletions}</span>
@@ -85,12 +103,20 @@ export function FileCard({ file, commenting }: { file: PrFile; commenting?: Diff
                 path={file.path}
                 threads={threadsForLine(ln, matched)}
                 commenting={commenting}
+                mark={markFor(ln, findings, anchors)}
+                findings={findingApi}
               />
             ))
           )}
+          {findingApi && <OutsideFindings findings={anchors.outside} api={findingApi} />}
           {commenting && commenting.showComments && <OutdatedComments threads={outdated} />}
         </div>
       )}
     </div>
   );
+}
+
+/** A plain dot in the worst severity's colour; the count is in its label, not on screen. */
+function FindingDot({ severity, label }: { severity: Severity; label: string }) {
+  return <span role="img" aria-label={label} title={label} style={findingDotFor(SEV[severity].c)} data-severity={severity} />;
 }
