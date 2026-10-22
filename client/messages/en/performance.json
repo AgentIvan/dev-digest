@@ -1,0 +1,70 @@
+{
+  "page": {
+    "crumb": "Agent Performance",
+    "title": "Agent Performance",
+    "subtitle": "Which agents earn their keep — accept rate is the quality signal",
+    "window": "{days} days",
+    "windowLabel": "Window",
+    "loadError": "Could not load agent performance.",
+    "emptyTitle": "No review runs in this window",
+    "emptyBody": "Run a review on a pull request and its agents will show up here.",
+    "emptyCta": "Open pull requests"
+  },
+  "card": {
+    "runs": "TOTAL RUNS ({days}D)",
+    "runsSub": "{failed, plural, =0 {none failed} one {# failed} other {# failed}}",
+    "cost": "TOTAL COST ({days}D)",
+    "costChange": "{sign}{amount} vs previous {days} days",
+    "costNoChange": "no cost known for the previous {days} days",
+    "withoutCost": "{count, plural, one {# run} other {# runs}} without a reported cost",
+    "accept": "ACCEPT RATE",
+    "acceptSub": "{count, plural, =0 {nothing decided yet} one {of # decided finding} other {of # decided findings}}",
+    "mostActive": "MOST-ACTIVE AGENT",
+    "mostActiveSub": "{runs, plural, one {# run} other {# runs}} · <rate>{accept}</rate> accept",
+    "costUnknown": "no cost known in this window"
+  },
+  "table": {
+    "agent": "Agent",
+    "runs": "Runs",
+    "avgCost": "Avg cost",
+    "avgDuration": "Avg dur.",
+    "accept": "Accept",
+    "lastRun": "Last run",
+    "decided": "of {count}",
+    "lowSample": "low sample",
+    "lowSampleHint": "Fewer than 5 decided findings in this or the previous window — no trend yet.",
+    "trend": {
+      "up": "up against the previous window",
+      "down": "down against the previous window",
+      "flat": "about the same as the previous window"
+    },
+    "deletedAgent": "deleted agent",
+    "deletedPr": "deleted pull request",
+    "recent": "Last runs of {name} in this window",
+    "failed": "failed",
+    "done": "done",
+    "score": "score {score}",
+    "findings": "{count, plural, one {# finding} other {# findings}}",
+    "ago": "{ago, select, now {just now} other {{ago} ago}}",
+    "caption": "Reviewer agents in this window. Open an agent to see its last runs."
+  },
+  "unknown": {
+    "cost": "No cost reported for these runs.",
+    "failed": "A failed run records no score, findings, duration or cost.",
+    "decided": "Nothing decided yet: accept or dismiss findings to get a rate.",
+    "duration": "No finished run with a recorded duration.",
+    "allFailed": "Every run of this agent failed, and a failed run records no findings, cost or duration.",
+    "notRecorded": "This run finished without recording it.",
+    "costChange": "A cost change needs a known cost in this window and the previous one.",
+    "mostActive": "No run by a current agent in this window: runs of deleted agents do not count.",
+    "runCost": "No cost reported for this run."
+  },
+  "breakdown": {
+    "title": "Cost breakdown",
+    "byAgent": "By agent",
+    "byModel": "By model",
+    "empty": "No known cost in this window.",
+    "unknownModel": "unknown model",
+    "share": "{cost} · {share}"
+  }
+}

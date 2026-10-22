@@ -12,6 +12,8 @@
 | `/repos/:repoId/context` | Project Context: the repo's specs/docs/insights Markdown, read-only (`?doc=`) | `useContextDocs` → `GET /repos/:id/context`; preview → `GET /repos/:id/context/file?path=` |
 | `/repos/:repoId/onboarding` | Onboarding Tour | `useOnboarding` → `GET /repos/:id/onboarding`; Generate / Regenerate → `POST` (one model call) |
 | `/repos/:repoId/conventions` | Conventions extractor | `useConventions` → `GET /repos/:id/conventions`; scan → `POST /repos/:id/conventions/extract`; `POST /conventions/:id/accept`, `DELETE /conventions/:id` |
+| `/agent-performance` | Agent Performance: cards, agents table with recent runs, cost by agent and model (7 / 30 / 90 days) | `useAgentPerformance` → `GET /agents/performance?days=` |
+| `/digest` | Weekly Digest (`?week=YYYY-Www`): the week vs the week before, open criticals, agents, highlights | `useDigest` → `GET /digest?week=`; Write highlights → `POST /digest/highlights` (one model call) |
 | `/settings/:section` | API keys, models | `GET /settings`, `GET /settings/secrets-status`, `PUT /settings`; model lists → `GET /providers/:id/models` |
 
 ## PR list — `/repos/:repoId/pulls`
@@ -97,6 +99,40 @@ line with a focus ring; without `line` it scrolls to the file.
   on GitHub at the indexed commit, numbered reading path) and a footer naming model,
   cost and index commit, or the skeleton's reason.
 
+## Agent Performance and Weekly Digest (HW L08)
+
+Both pages sit in the sidebar's **GLOBAL** group (`g m`, `g w`) and are workspace-wide,
+not under a repository.
+
+- **Agent Performance** — a 7 / 30 / 90 days selector; cards: runs with a daily
+  sparkline and failures, cost with its change against the previous window ("no cost
+  known" for this window or the previous one, whichever it is), the pooled accept rate
+  with the decided count, the most active agent. The table is a native `<table>` (accept
+  rate first, unknown last): runs, average cost and duration, the accept rate with a
+  trend arrow (text label) and "low sample" under 5 decisions (not when nothing is
+  decided — that is "—"), the last run. The agent
+  cell's button (`aria-expanded`) opens the last five runs, each linking the PR's Agent
+  runs tab (a deleted PR's run is unlinked). Every unknown is `Unknown` — "—" with its
+  reason in `title` and in visually hidden text. Cost donuts by agent and by model show
+  cost and share in the app's cost format; a slice's colour follows its key
+  (`sliceColors`) over the `--chart-1…6` tokens (six distinct hues in both themes, none
+  grey), the deleted agent and the unknown model are grey, so an agent keeps its colour
+  across windows while the same agents appear.
+- **Weekly Digest** — previous / next week through `?week=` (no next past the current
+  week, which is marked "in progress" and compared with the same elapsed days of last
+  week). Cards: PRs opened, PRs reviewed, runs, cost, new findings by severity, decisions
+  — each with its change; an unknown change is "— vs last week" with its reason, never
+  "no change". Highlights are labelled "AI-written, numbers checked", written only on
+  **Write highlights / Rewrite**, with model, cost, time and a "stale" note. A request
+  belongs to its week: the mutation key holds the week and the answer goes to the cache of
+  the week it asked for; coming back to a week whose request still runs shows "Writing…"
+  (`useIsMutating`). A failure shows the server's sentence as is. Open critical findings
+  ("N of M") open Files changed at their line. **Copy as Markdown** has each number with
+  last week's and the change, criticals with PR title, file:line and agent; untrusted text
+  is escaped for a team channel (`&`, `@`, `#N`, `GH-N`, `<!…>` neutralised), and URLs, any
+  `host.tld/path` and bare domains on common TLDs stay inside code spans; PRs link to
+  GitHub. "Previous week" stops at 1970-W01, the first week the API answers for.
+
 No page triggers an LLM call by being opened. Model calls happen only from
-**Run Review**, the intent card's **Derive**, the tour's **Generate / Regenerate** and
-the Brief card's **Generate / Regenerate**.
+**Run Review**, the intent card's **Derive**, the tour's **Generate / Regenerate**,
+the Brief card's **Generate / Regenerate** and the digest's **Write highlights**.
