@@ -197,3 +197,141 @@ Tests: `cd server && pnpm exec vitest run context project-context onboarding git
 `cd reviewer-core && npm test`,
 `cd client && pnpm test ContextTab DocList DocPanel ContextDocView OnboardingTour MermaidDiagram context/page`.
 
+---
+
+# L05 homework: Risk Brief and git-why
+
+Two features, both through the same SDD pipeline as the lab: spec, independent spec
+review, plan, code, and a check of the code against the spec. **SPEC-03 Risk Brief**
+answers what can break because of this PR, where to look first and who has already
+touched these files. **SPEC-04 git-why** answers why a line is the way it is: who
+changed it last and in which PR. Specs, plans and verification reports are in
+`specs/risk-brief/` and `specs/git-why/`.
+
+**Video (76 s):** [hw5-brief-why.mp4](https://github.com/AgentIvan/dev-digest/blob/pr-assets/hw-5/hw5-brief-why.mp4):
+generating a brief on PR #9, an expanded risk, the jump into the diff, the history of
+PR #5 and git-why on a line from PR #4.
+
+## Risk Brief (SPEC-03)
+
+Most of the brief is computed by code, for free:
+
+- **Signals:** a table of rules over the PR's changes. A migration, a DB schema change
+  without a migration, a dependency manifest, a lockfile, a CI workflow, paths with
+  words like `auth`, `session`, `token`, routes and public contracts (deleted lines
+  give medium, added-only lines give low). Tests and Markdown give no signals.
+- **History:** other PRs that were already merged into the default branch and touched
+  the same files. Taken from `git log --first-parent` of the clone, without lockfiles,
+  Markdown and migration metadata.
+
+The model gets this together with the diff and makes one call: it explains the risks,
+ranks them, picks up to five places to read first and writes notes for the history.
+The server does not trust it:
+
+- a file reference stays only if the file is in the PR and the line is among the lines
+  the diff shows (for a range, every line);
+- a risk without a single live reference is dropped;
+- links, images and HTML are stripped from the text;
+- a rule's signal stays until the model covers it with a risk of the same type.
+
+Without the model (no key, wrong schema, 90 s) the brief is built from the signals and
+the history alone, with the reason. A failed regeneration does not overwrite the
+model's brief for the same commit.
+
+![Brief on demo PR #3](https://raw.githubusercontent.com/AgentIvan/dev-digest/pr-assets/hw-5/brief-pr3.png)
+
+On demo PR #3 the brief puts the SSRF first and points to the line with
+`fetch(req.body.url)`. It costs $0.0007-0.0008 on deepseek-v4-flash. The brief for HW1
+(#5, 55 files) costs $0.0016-0.0018. Its history shows Lab 1 (#4), which touched the
+same `routes.ts`, contracts and `RunHistory`:
+
+![Brief with history, PR #5](https://raw.githubusercontent.com/AgentIvan/dev-digest/pr-assets/hw-5/brief-pr5-history.png)
+
+Opening a PR does not call the model. Until there is a brief, the card offers Generate:
+
+![Empty state](https://raw.githubusercontent.com/AgentIvan/dev-digest/pr-assets/hw-5/brief-empty.png)
+
+Every reference in the brief opens Files changed at the right file and line
+(`?tab=diff&file=...&line=...`). A collapsed file expands and the line is highlighted.
+If the tab's patch does not have the line, the page scrolls to the file itself.
+
+![From the brief to the diff](https://raw.githubusercontent.com/AgentIvan/dev-digest/pr-assets/hw-5/deep-link.png)
+
+## git-why (SPEC-04)
+
+In Files changed, hovering a deleted or context line shows a why button. The server
+runs `git blame` on that line at the PR's merge base, because that is the revision the
+left side of the diff shows, not the default branch HEAD. Then it finds the merge that
+brought the commit into the default branch. No model here, only git:
+
+![git-why on a line from PR #4](https://raw.githubusercontent.com/AgentIvan/dev-digest/pr-assets/hw-5/why-panel.png)
+
+A path from the user reaches git only after the check that it is a file of the PR, and
+only after `--`. There are five checks, in this order: request schema (422), PR (404),
+branch (409), file and line (404), clone (409). Before the fourth one git is not called
+at all, and a test checks that with spies on every git method.
+
+## What live runs found
+
+- **A fork inherits upstream PR numbers.** The history of PR #5 showed "#11 chore:
+  cleanup before home tasks". That is a squash commit from the course repository, while
+  #11 in my fork is the open lab 5 PR. Now a number from a commit counts only if
+  DevDigest knows such a PR in this repository as merged. The title comes from
+  DevDigest, not from the commit message. The specs were changed first, both of them:
+  AC-4 in SPEC-03, AC-7 in SPEC-04.
+- **The root commit seemed to come from PR #4.** `rev-list --ancestry-path --merges` finds
+  later merges even for a commit that sits on the mainline itself. Such a commit now has
+  no merge it came through.
+- **The model was off by two lines.** On PR #3 it pointed to `routes.ts:175`
+  (`headers:`), while `fetch` is on 173. The model counts lines from `@@` and loses
+  track. Grounding let it through, because 175 is also a line the diff shows. Now every
+  line of the new version in the diff the model gets has its own number. After that,
+  two runs gave 173 and 14 (the request body schema) exactly. Reviewers make the same
+  mistake: the SSRF finding is on 175 too. But that is the reviewer-core prompt, so I
+  wrote it into insights as a separate task.
+- **A large PR.** On #5 the diff for the model is cut at 12 000 characters, so for
+  files the model did not see it gives `:1`. For a new file that is a real line, so
+  grounding lets it through. The only cures are a bigger diff budget or map-reduce, as
+  the reviewers do.
+
+## Verification
+
+After the code, a separate Opus agent in the plan-verifier role checked the spec
+against the branch's code and tests, not against commit messages. It took three rounds:
+every pass found real things. Full reports are in `verification.md` next to the specs.
+
+| Pass | SPEC-03 | SPEC-04 |
+|---|---|---|
+| 1 | not ready: the diff parser lost deleted files, Prisma migrations were not detected, a range across two hunks passed, any diff loading error became a 409 | not ready: 422 fired before 404/409, against the order in the spec, a phantom line after the final `\n`, why on the `\ No newline` marker |
+| 2 | not ready: Go/Python/Ruby tests produced signals, `git diff` returned non-ASCII paths quoted with escape sequences, deleted files cost the reviewers an extra map call | not ready: the file existence check passed the path as `<sha>:<path>`, not after `--` |
+| 3 | one regression from the second round: the `spec/` folder counted as tests, so `spec/openapi.yaml` stopped producing a signal. Fixed and covered by a test | ready |
+
+Some of the findings were not only about the brief. The diff parser had dropped deleted
+files since day one, so reviewers never saw them. `git diff` returned non-ASCII paths
+quoted with escape sequences. The closing `</untrusted>` marker was escaped only in
+lower case; that fix sits in #13, where the conventions extractor needs it too. All of
+this is fixed with tests, and every behavior change was written into the spec's
+changelog first.
+
+Left as is on purpose, and written down in the specs:
+
+- The 90-second deadline does not cancel the model request itself. That is how every
+  model feature works; cancelling would need an AbortSignal passed through the LLM port.
+- Actions on a diff line are only available on hover. The + for a comment works the
+  same way, and keyboard navigation through the diff is a separate feature.
+- The rule based on words in the path also catches the design system's `tokens.ts`.
+  That is expected: the rule only looks at the words in the path.
+
+## How to check it yourself
+
+1. `./scripts/dev.sh --no-seed`, pick a repository with a clone in the sidebar.
+2. PR -> Overview -> Risk brief -> Generate. A pill can be expanded with its arrow.
+   Clicking a pill or a read-first line opens Files changed at that line.
+3. History in the card shows other merged PRs on the same files.
+4. Files changed -> hover a deleted or context line -> why. On a PR that does not
+   target the default branch, the button is not there.
+
+Tests:
+- `cd server && pnpm exec vitest run brief why git-history grounding`;
+- `cd reviewer-core && npm test`;
+- `cd client && pnpm test BriefCard WhyPanel DiffTab helpers`.

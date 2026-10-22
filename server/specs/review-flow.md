@@ -18,6 +18,14 @@ every enabled agent.
 1. The PR diff is loaded once for all agents, from the first source that has a
    patch: `git diff base...head` on the local clone → persisted `pr_files` →
    the PR files from GitHub (then persisted). No source → `EmptyDiffError`.
+   The diff holds every file with a text diff, deleted files included (under their
+   old path, with no new-side lines); binary files and pure renames have no hunks
+   and are not in it. A hunk ends at its header's line counts
+   (`adapters/git/diff-parser.ts`); paths are read with `core.quotepath=off`, so a
+   non-ASCII name is the real name. Map-reduce gives a map call only to files with
+   new-side lines (a finding on a deleted file could not be grounded); a single-pass
+   prompt still shows the removed lines. A PR that only deletes files is reviewed
+   in one pass.
    If loading fails, **every** queued run is marked `failed` with the error —
    an empty diff is never sent to the model.
    Then the PR intent is taken from `pr_intent` when it matches the head, or

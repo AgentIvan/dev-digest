@@ -45,6 +45,13 @@ URL" into out-of-scope — exactly the SSRF hole — which is why intent may inf
 a rationale but never reduce findings.
 Evidence: `src/prompt.ts:16`, `src/prompt.ts:153`
 
+### 2026-10-13 — Escape delimiter-closing tags case- and space-insensitively
+`wrapUntrusted` replaced only an exact `</untrusted>` and skills only `</skill`; a
+document or intent with `</UNTRUSTED>` or `< / untrusted >` passed through, and models
+treat those as the same tag. Both now use a regex with `\s*` and the `i` flag; any new
+delimiter should do the same.
+Evidence: `src/prompt.ts:58`, `src/prompt.ts:79`
+
 ## Tool & Library Notes
 
 ## Recurring Errors & Fixes
@@ -62,5 +69,21 @@ Evidence: `src/llm/openrouter.ts:54`
 `SkillPart` are exported. The assembled block is still recorded in
 `assembly.skills`, so the trace drawer shows it unchanged.
 Evidence: `src/prompt.ts:41`, `src/prompt.ts:113`
+
+### 2026-10-13 — Findings land two lines off: the model counts lines from the hunk header
+On demo PR #3 every reviewer put the SSRF finding on `routes.ts:175` (`headers:`); the
+`fetch` is on 173. The diff goes into the prompt raw, so the model counts from `@@` and
+drifts — grounding still passes, since 175 is a shown line. The risk brief had the same
+error and fixed it by prefixing each new-side line with its number (server
+`reviews/brief/helpers.ts` `numberedDiff`): two runs then cited 173 exactly. Doing the
+same here would change every review prompt, so it was left for a reviewer-core task.
+Evidence: `src/prompt.ts:182`, `../server/src/modules/reviews/brief/helpers.ts:48`
+
+### 2026-10-13 — Map-reduce skips files with no new-side lines
+Once the server's parser kept deleted files, map-reduce would have spent one model call
+per deleted file whose line findings grounding then drops. `reviewableFiles` keeps map
+chunks (and the mode choice) to files with new-side lines; single-pass still shows the
+removed lines in the raw diff.
+Evidence: `src/review/run.ts:122`, `test/run.test.ts:108`
 
 ## Open Questions

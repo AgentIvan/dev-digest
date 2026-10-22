@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from "next-intl";
 import type { FindingRecord, PrFile, SmartDiff } from "@devdigest/shared";
 import prReview from "../../../../../../../../messages/en/prReview.json";
 import shell from "../../../../../../../../messages/en/shell.json";
+import brief from "../../../../../../../../messages/en/brief.json";
 
 const h = vi.hoisted(() => ({
   smart: { data: undefined as SmartDiff | undefined, isLoading: false, isError: false },
@@ -11,6 +12,14 @@ const h = vi.hoisted(() => ({
   mutate: vi.fn(),
 }));
 vi.mock("@/lib/hooks/smart-diff", () => ({ useSmartDiff: () => h.smart }));
+vi.mock("@/lib/hooks/brief", () => ({
+  useWhy: (_pr: string, file: string, line: number) => ({
+    data: { file, line, commit: { sha: "c0ffee1234567", author: "dev", date: "2026-09-01T10:00:00Z", subject: `blame ${file}:${line}` }, boundary: false, pr: null, missing: null, note: null },
+    isLoading: false,
+    isError: false,
+    error: null,
+  }),
+}));
 vi.mock("@/lib/hooks/reviews", () => ({
   usePrComments: () => ({ data: [] }),
   useCreatePrComment: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -49,7 +58,7 @@ const record = (id: string, title: string, start: number, extra: Partial<Finding
 // GitHub's order: alphabetical. The reviewer order puts the risky code first.
 const FILES: PrFile[] = [
   { path: "pnpm-lock.yaml", additions: 1, deletions: 0, patch: "@@ -1,1 +1,2 @@\n a\n+lock-line-content" },
-  { path: "server/src/index.ts", additions: 1, deletions: 0, patch: "@@ -1,1 +1,2 @@\n a\n+import share from './share.js';" },
+  { path: "server/src/index.ts", additions: 1, deletions: 1, patch: "@@ -1,2 +1,2 @@\n a\n-removed-line\n+import share from './share.js';" },
   { path: "server/src/share.ts", additions: 3, deletions: 0, patch: "@@ -0,0 +1,3 @@\n+const url = req.body.url;\n+await fetch(url);\n+return ok;" },
   { path: "server/test/share.test.ts", additions: 1, deletions: 0, patch: "@@ -0,0 +1,1 @@\n+it('shares');" },
   { path: "docs/share.md", additions: 1, deletions: 0, patch: "@@ -0,0 +1,1 @@\n+# Share" },
@@ -74,10 +83,10 @@ const SMART: SmartDiff = {
   markers_stale: false,
 };
 
-const renderTab = () =>
+const renderTab = (extra: Partial<React.ComponentProps<typeof DiffTab>> = {}) =>
   render(
-    <NextIntlClientProvider locale="en" messages={{ prReview, shell }}>
-      <DiffTab prId="p1" filesCount={FILES.length} files={FILES} canComment={false} />
+    <NextIntlClientProvider locale="en" messages={{ prReview, shell, brief }}>
+      <DiffTab prId="p1" filesCount={FILES.length} files={FILES} canComment={false} {...extra} />
     </NextIntlClientProvider>,
   );
 
@@ -204,5 +213,57 @@ describe("roleSections", () => {
       "server/test/share.test.ts",
       "docs/share.md",
     ]);
+  });
+});
+
+// HW L05: deep links from the risk brief (SPEC-03 AC-22) and git-why (SPEC-04 AC-11).
+describe("DiffTab — brief deep link and git-why", () => {
+  it("SPEC-03 AC-22: a deep link opens a folded file and highlights the new-side line", () => {
+    h.smart = { data: SMART, isLoading: false, isError: false };
+    renderTab({ focus: { file: "pnpm-lock.yaml", line: 2 } });
+    const focused = screen.getByText("lock-line-content").closest("[data-focused]");
+    expect(focused).not.toBeNull();
+  });
+
+  it("SPEC-03 AC-22: a line the patch does not show scrolls to the file instead", () => {
+    h.smart = { data: SMART, isLoading: false, isError: false };
+    const scroll = vi.fn();
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = scroll;
+    try {
+      renderTab({ focus: { file: "server/src/share.ts", line: 40 } });
+      expect(document.querySelector("[data-focused]")).toBeNull();
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect((scroll.mock.contexts[0] as Element).getAttribute("data-focus")).toBe("true");
+    } finally {
+      Element.prototype.scrollIntoView = original;
+    }
+  });
+
+  it("SPEC-04 AC-11/AC-12: 'why' on context lines only, showing the answer under the line", () => {
+    h.smart = { data: SMART, isLoading: false, isError: false };
+    renderTab({ whyEnabled: true, focus: { file: "server/src/index.ts", line: null } });
+    const context = screen.getAllByText("a").map((el) => el.closest("[data-finding], div")!.parentElement!);
+    fireEvent.mouseEnter(context[0]!);
+    fireEvent.click(screen.getByRole("button", { name: "why" }));
+    expect(screen.getByText("blame server/src/index.ts:1")).toBeTruthy();
+
+    // A removed line exists in the base too: it offers "why" by its old number.
+    fireEvent.mouseEnter(screen.getByText("removed-line").closest("div")!.parentElement!);
+    const buttons = screen.getAllByRole("button", { name: "why" });
+    fireEvent.click(buttons[buttons.length - 1]!);
+    expect(screen.getByText("blame server/src/index.ts:2")).toBeTruthy();
+
+    const added = screen.getByText("import share from './share.js';").closest("div")!.parentElement!;
+    fireEvent.mouseEnter(added);
+    // Only the two open panels' toggles — the added line offers none.
+    expect(screen.getAllByRole("button", { name: "why" })).toHaveLength(2);
+  });
+
+  it("SPEC-04 AC-11: no 'why' when the PR is not into the default branch", () => {
+    h.smart = { data: SMART, isLoading: false, isError: false };
+    renderTab({ whyEnabled: false, focus: { file: "server/src/index.ts", line: null } });
+    fireEvent.mouseEnter(screen.getAllByText("a")[0]!.closest("div")!.parentElement!);
+    expect(screen.queryByRole("button", { name: "why" })).toBeNull();
   });
 });

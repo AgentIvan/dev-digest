@@ -38,4 +38,15 @@ finding accepted or rejected) refreshes the markers too.
   a file the smart diff does not list is shown at the end of the last section,
   never dropped.
 
-Tests: `DiffTab/DiffTab.test.tsx`, `src/components/diff-viewer/helpers.test.ts`.
+- **Focus** (HW L05): `?file=&line=` from the Brief card reaches the viewer as
+  `FileAnnotation.focus` (`withFocus` in `DiffTab/helpers.ts`): the file opens even
+  when its role folds it, the new-side line gets a focus ring and is scrolled into
+  view. A line the diff does not show leaves the file scrolled to its header.
+- **git-why** (HW L05): `DiffViewer` takes an optional `why` (`WhyApi`): removed and
+  context lines show a button that toggles `WhyPanel` under the line, keyed by the
+  base line number. `parsePatch` ends each hunk at its header's counts, like the
+  server, so the `\ No newline at end of file` marker and trailing blank lines get no
+  numbers and offer no "why". `DiffTab` passes it only when the PR's base is the default branch.
+
+Tests: `DiffTab/DiffTab.test.tsx`, `DiffTab/_components/WhyPanel/WhyPanel.test.tsx`,
+`src/components/diff-viewer/helpers.test.ts`.

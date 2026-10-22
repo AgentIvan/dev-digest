@@ -10,6 +10,8 @@ import type {
   BlameLine,
   GitCommit,
   TrackedFile,
+  HistoryCommit,
+  BlameLineInfo,
 } from '@devdigest/shared';
 import { parseUnifiedDiff } from './diff-parser.js';
 
@@ -93,7 +95,8 @@ export class SimpleGitClient implements GitClient {
   }
 
   async diff(repo: RepoRef, base: string, head: string): Promise<UnifiedDiff> {
-    const raw = await this.git(repo).diff([`${base}...${head}`]);
+    // quotepath=off: a non-ASCII path comes out as written, not as "b/\320\277…".
+    const raw = await this.git(repo).raw(['-c', 'core.quotepath=off', 'diff', `${base}...${head}`]);
     return parseUnifiedDiff(raw);
   }
 
@@ -105,7 +108,7 @@ export class SimpleGitClient implements GitClient {
    */
   async diffNameOnly(repo: RepoRef, base: string, head: string): Promise<string[]> {
     if (base === head) return [];
-    const raw = await this.git(repo).raw(['diff', '--name-only', `${base}..${head}`]);
+    const raw = await this.git(repo).raw(['-c', 'core.quotepath=off', 'diff', '--name-only', `${base}..${head}`]);
     return raw
       .split('\n')
       .map((s) => s.trim())
@@ -138,6 +141,94 @@ export class SimpleGitClient implements GitClient {
     return parseLsTree(raw);
   }
 
+  async history(repo: RepoRef, paths: string[], limit: number): Promise<HistoryCommit[]> {
+    const asked = paths.slice(0, MAX_HISTORY_PATHS);
+    if (asked.length === 0 || !(await this.exists(join(this.clonePathFor(repo), '.git')))) return [];
+    // --literal-pathspecs: `:(top)`, `*` and friends are plain characters. quotepath=off:
+    // non-ASCII paths come out as written, so they match. --diff-merges=first-parent: a
+    // merge lists the files its PR brought in. `--` keeps every path a path.
+    const raw = await this.git(repo).raw([
+      '-c',
+      'core.quotepath=off',
+      '--literal-pathspecs',
+      'log',
+      '--first-parent',
+      '--diff-merges=first-parent',
+      '--name-only',
+      `-n${Math.max(1, Math.floor(limit))}`,
+      `--format=${RECORD}%H${FIELD}%an${FIELD}%aI${FIELD}%s${END}`,
+      'HEAD',
+      '--',
+      ...asked,
+    ]);
+    return parseHistory(raw, asked);
+  }
+
+  async blameLine(repo: RepoRef, path: string, line: number, rev = 'HEAD'): Promise<BlameLineInfo | null> {
+    if (!Number.isInteger(line) || line < 1 || !/^[\w./-]+$/.test(rev) || rev.startsWith('-')) return null;
+    if (!(await this.exists(join(this.clonePathFor(repo), '.git')))) return null;
+    try {
+      const raw = await this.git(repo).raw(['--literal-pathspecs', 'blame', '--line-porcelain', '-L', `${line},${line}`, rev, '--', path]);
+      return parseBlameLine(raw);
+    } catch {
+      return null; // past the end of the file, or the file is not at `rev`
+    }
+  }
+
+  async hasFile(repo: RepoRef, path: string, rev: string): Promise<boolean | null> {
+    if (!/^[\w./-]+$/.test(rev) || rev.startsWith('-')) return null;
+    if (!(await this.exists(join(this.clonePathFor(repo), '.git')))) return null;
+    try {
+      // -z: names come back unquoted (non-ASCII), NUL-separated.
+      const raw = await this.git(repo).raw(['--literal-pathspecs', 'ls-tree', '-z', '--name-only', rev, '--', path]);
+      return raw.split('\0').includes(path);
+    } catch {
+      return null;
+    }
+  }
+
+  async mergeBase(repo: RepoRef, a: string, b: string): Promise<string | null> {
+    if (![a, b].every((r) => /^[\w./-]+$/.test(r) && !r.startsWith('-'))) return null;
+    if (!(await this.exists(join(this.clonePathFor(repo), '.git')))) return null;
+    try {
+      return (await this.git(repo).raw(['merge-base', a, b])).trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
+  async isShallow(repo: RepoRef): Promise<boolean | null> {
+    if (!(await this.exists(join(this.clonePathFor(repo), '.git')))) return null;
+    try {
+      return (await this.git(repo).raw(['rev-parse', '--is-shallow-repository'])).trim() === 'true';
+    } catch {
+      return null; // a clone git cannot read is as good as none
+    }
+  }
+
+  async mergedVia(repo: RepoRef, sha: string): Promise<{ sha: string; subject: string } | null> {
+    if (!/^[0-9a-f]{7,40}$/.test(sha)) return null;
+    if (!(await this.exists(join(this.clonePathFor(repo), '.git')))) return null;
+    const git = this.git(repo);
+    try {
+      const mainline = new Set((await git.raw(['rev-list', '--first-parent', 'HEAD'])).split('\n').filter(Boolean));
+      // A commit on the mainline itself was committed there (or squash-merged): no merge brought it in.
+      const full = (await git.raw(['rev-parse', '--verify', `${sha}^{commit}`])).trim();
+      if (mainline.has(full)) return null;
+      // Merges that descend from the commit, ancestors first (topological, so skewed
+      // commit dates cannot reorder them); the first one on the mainline brought it in.
+      const merges = (await git.raw(['rev-list', '--ancestry-path', '--merges', '--topo-order', '--reverse', `${sha}..HEAD`]))
+        .split('\n')
+        .filter(Boolean);
+      const via = merges.find((m) => mainline.has(m));
+      if (!via) return null;
+      const subject = (await git.raw(['log', '-1', '--format=%s', via])).trim();
+      return { sha: via, subject };
+    } catch {
+      return null; // unknown to the clone: no PR can be named
+    }
+  }
+
   async readCommitted(repo: RepoRef, path: string, commit = 'HEAD'): Promise<string | null> {
     if (!(await this.exists(join(this.clonePathFor(repo), '.git')))) return null;
     try {
@@ -149,6 +240,48 @@ export class SimpleGitClient implements GitClient {
 }
 
 const SYMLINK_MODE = '120000';
+const FIELD = '\x1f';
+const RECORD = '\x1e';
+const END = '\x1d';
+/** At most this many paths go to one `git log` (SPEC-03 AC-6). */
+export const MAX_HISTORY_PATHS = 100;
+
+/**
+ * `git log --name-only` records: `\x1e<sha>\x1f<author>\x1f<date>\x1f<subject>\x1d`
+ * followed by one changed file per line.
+ */
+export function parseHistory(raw: string, asked: readonly string[]): HistoryCommit[] {
+  const wanted = new Set(asked);
+  return raw
+    .split(RECORD)
+    .filter((r) => r.trim())
+    .map((record) => {
+      const cut = record.indexOf(END);
+      const head = cut === -1 ? record : record.slice(0, cut);
+      const [sha = '', author = '', date = '', subject = ''] = head.split(FIELD);
+      const files = (cut === -1 ? '' : record.slice(cut + 1))
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => wanted.has(l));
+      return { sha, author, date, subject, files };
+    })
+    .filter((c) => c.sha && c.files.length > 0);
+}
+
+/** One `--line-porcelain` block: header, author, author-time, summary, `boundary`. */
+export function parseBlameLine(raw: string): BlameLineInfo | null {
+  const header = raw.match(/^([0-9a-f]{40}) \d+ \d+/m);
+  if (!header) return null;
+  const field = (name: string) => raw.match(new RegExp(`^${name} (.*)$`, 'm'))?.[1] ?? '';
+  const time = Number(field('author-time'));
+  return {
+    sha: header[1]!,
+    author: field('author'),
+    date: Number.isFinite(time) && time > 0 ? new Date(time * 1000).toISOString() : '',
+    summary: field('summary'),
+    boundary: /^boundary$/m.test(raw),
+  };
+}
 
 /**
  * `<mode> <type> <object> <size>\t<path>` records. Regular blobs only:

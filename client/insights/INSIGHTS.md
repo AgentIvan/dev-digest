@@ -56,6 +56,14 @@ and passes a `DiffFindingApi` (`visible`, `render(finding)`); the viewer only de
 where a card goes: under the anchored line or in the off-patch list at the file end.
 Evidence: `src/components/diff-viewer/helpers.ts:55`, `src/app/repos/[repoId]/pulls/[number]/_components/DiffTab/DiffTab.tsx:58`
 
+### 2026-10-13 — A deep-link line can be missing from the patch the tab renders
+The Brief card's references are grounded on the review diff loader's diff; Files
+changed renders `pr_files` patches from GitHub. They usually agree, but not always
+(GitHub truncates large patches; `pr_files` can lag the head). `FileCard` scrolls to
+the file whenever the focus line is not among its rendered lines, rather than only when
+there is no line at all, so a link never lands nowhere.
+Evidence: `src/components/diff-viewer/FileCard/FileCard.tsx:56`
+
 ## Tool & Library Notes
 
 ### 2026-10-07 — `messages/en/runs.json` is not uniformly indented
@@ -144,6 +152,13 @@ the browser check caught it — component tests render the tab directly. The pag
 reads the editor's `TABS` through `editorTab()`.
 Evidence: `src/app/agents/[id]/page.tsx:24`, `src/app/agents/[id]/_components/AgentEditor/helpers.ts:5`
 
+### 2026-10-13 — `parsePatch` numbered the no-newline marker and the trailing empty line
+Both became context lines with old and new numbers, so git-why offered "why" on
+`\ No newline at end of file` (the server rightly answered 404) and a phantom last line
+could be focused. The parser drops the marker and the empty string after a final
+newline.
+Evidence: `src/components/diff-viewer/helpers.ts:22`
+
 ## Session Notes
 
 ### 2026-10-07 — Lab 1: run cost
@@ -178,5 +193,11 @@ Shared pieces for both screens live in `src/components/context-doc`. The Context
 follows the sidebar's active repo — with an uncloned repo it lists nothing and says so,
 without calling attached paths missing.
 Evidence: `src/components/context-doc/index.ts:1`, `src/app/agents/[id]/_components/AgentEditor/_components/ContextTab/ContextTab.tsx:1`
+
+### 2026-10-13 — Homework 5: Brief card, deep links, git-why panel
+Overview gets the Brief card (generate on click only); every reference opens
+`?tab=diff&file=&line=`; Files changed gets a "why" button on base lines, hidden when
+the PR's base is not the active repo's default branch.
+Evidence: `src/app/repos/[repoId]/pulls/[number]/_components/BriefCard/BriefCard.tsx:24`, `src/app/repos/[repoId]/pulls/[number]/page.tsx:196`
 
 ## Open Questions
